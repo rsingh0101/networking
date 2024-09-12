@@ -1,0 +1,59 @@
+# Create directories for certs
+mkdir -p certs/example1.com certs/example2.com
+
+# Generate certs for example1.com
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout certs/example1.com/example1.key \
+  -out certs/example1.com/example1.crt \
+  -subj "/CN=example1.com"
+
+# Generate certs for example2.com
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout certs/example2.com/example2.key \
+  -out certs/example2.com/example2.crt \
+  -subj "/CN=example2.com"
+
+mkdir -p nginx
+
+events { }
+
+http {
+    server {
+        listen 80;
+        server_name example1.com;
+        return 301 https://$host$request_uri;
+    }
+
+    server {
+        listen 80;
+        server_name example2.com;
+        return 301 https://$host$request_uri;
+    }
+
+    server {
+        listen 443 ssl;
+        server_name example1.com;
+
+        ssl_certificate /etc/nginx/certs/example1.com/example1.crt;
+        ssl_certificate_key /etc/nginx/certs/example1.com/example1.key;
+
+        location / {
+            proxy_pass http://example1;
+        }
+    }
+
+    server {
+        listen 443 ssl;
+        server_name example2.com;
+
+        ssl_certificate /etc/nginx/certs/example2.com/example2.crt;
+        ssl_certificate_key /etc/nginx/certs/example2.com/example2.key;
+
+        location / {
+            proxy_pass http://example2;
+        }
+    }
+}
+
+
+
