@@ -1,0 +1,105 @@
+name: HAProxy CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  HAPROXY_CONFIG: haproxy.cfg
+
+jobs:
+
+# =========================
+# 1. VALIDATE CONFIG
+# =========================
+  validate:
+    name: Validate HAProxy Config
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install HAProxy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y haproxy
+
+      - name: Validate configuration
+        run: |
+          haproxy -c -f $HAPROXY_CONFIG
+
+# =========================
+# 2. DOCKER BUILD (OPTIONAL)
+# =========================
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: validate
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build HAProxy image
+        run: |
+          docker build -t haproxy-custom:latest .
+
+# =========================
+# 3. SECURITY SCAN
+# =========================
+  scan:
+    name: Security Scan (Trivy)
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: haproxy-custom:latest
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+
+# =========================
+# 4. DEPLOY (SSH)
+# =========================
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    needs: scan
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy files to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "."
+          target: "/opt/haproxy"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /opt/haproxy
+
+            echo "Validating HAProxy config on server..."
+            haproxy -c -f haproxy.cfg || exit 1
+
+            echo "Pulling latest changes..."
+            docker compose down
+            docker compose up -d --build
+
+            echo "Deployment complete"
