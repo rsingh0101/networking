@@ -2,9 +2,9 @@ name: HAProxy CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "master" ]
 
 env:
   HAPROXY_CONFIG: haproxy.cfg
